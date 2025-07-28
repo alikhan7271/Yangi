@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum‑scale=1.0" />
+  <title>Lokatsiyalarni tanlash</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body { font-family: sans-serif; margin: 10px; }
+    #map { height: 400px; margin-top: 20px; }
+    .point-list { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Rasm yuklang</h2>
+  <input type="file" id="imgInput" accept="image/*" />
+
+  <div id="status">OCR uchun rasm tanlanmagan.</div>
+  <div id="map"></div>
+  <div class="point-list" id="pointList"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
+  <script>
+    const statusEl = document.getElementById('status');
+    const pointListEl = document.getElementById('pointList');
+    let map, markers = [];
+
+    // Xarita tayyorlash
+    function initMap() {
+      map = L.map('map').setView([0, 0], 2);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18
+      }).addTo(map);
+    }
+
+    function addMarker(lat, lon, idx, extra) {
+      const m = L.marker([lat, lon]).addTo(map);
+      let popupTxt = `№${idx}: ${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+      if (extra) popupTxt += `<br>${extra}`;
+      m.bindPopup(popupTxt);
+      markers.push(m);
+    }
+
+    function processText(text) {
+      const regex = /(-?\d+\.\d+)\s+(-?\d+\.\d+)/g;
+      let m, i = 1;
+      const points = [];
+      while ((m = regex.exec(text)) !== null) {
+        points.push({ lat: parseFloat(m[1]), lon: parseFloat(m[2]) });
+      }
+      return points;
+    }
+
+    document.getElementById('imgInput').addEventListener('change', ev => {
+      const file = ev.target.files[0];
+      if (!file) return;
+      statusEl.textContent = 'OCR jarayoni boshlanyapti...';
+      Tesseract.recognize(file, 'eng')
+        .then(res => {
+          const text = res.data.text;
+          statusEl.textContent = 'OCR tugadi. Topilgan matn:';
+          console.log(text);
+          const points = processText(text);
+          if (points.length === 0) {
+            statusEl.textContent = 'Hech qanday koordinata topilmadi.';
+            return;
+          }
+          statusEl.textContent = `Topilgan ${points.length} koordinata. Xaritada ko‘rsatilmoqda.`;
+          // Xarita markerni joylashtirish
+          markers.forEach(m => map.removeLayer(m));
+          markers = [];
+          pointListEl.innerHTML = '';
+          points.forEach((pt, idx) => {
+            addMarker(pt.lat, pt.lon, idx + 1, null);
+            pointListEl.innerHTML += `<div>№${idx+1}: ${pt.lat.toFixed(6)}, ${pt.lon.toFixed(6)}</div>`;
+          });
+          const bounds = points.map(pt => [pt.lat, pt.lon]);
+          map.fitBounds(bounds, { padding: [50, 50] });
+        })
+        .catch(err => {
+          statusEl.textContent = 'OCR jarayonida xatolik: ' + err;
+        });
+    });
+
+    window.onload = initMap;
+  </script>
+</body>
+</html>
